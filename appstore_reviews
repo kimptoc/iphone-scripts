@@ -1,4 +1,4 @@
-#!/usr/bin/env ruby
+#!/usr/bin/env ruby 
 
 #
 # appstore_reviews
@@ -20,6 +20,7 @@
 require 'rubygems'
 require 'hpricot'
 require 'mechanize'
+require 'rss/maker'
 
 # MODIFY YOUR NATIVE LANGUAGE
 NATIVE_LANGUAGE = 'en'
@@ -27,7 +28,8 @@ NATIVE_LANGUAGE = 'en'
 # MODIFY THIS HASH WITH YOUR APP SET (grab the itunes store urls & pull the id params)
 software = {
   # http://phobos.apple.com/WebObjects/MZStore.woa/wa/viewSoftware?id=289923007&mt=8
-  'Domain Scout' => 289923007,
+#  'Domain Scout' => 307835548,
+ ARGV[0] => ARGV[1]
 }
 
 stores = [
@@ -126,6 +128,7 @@ def fetch_reviews(software_id, store)
   reviews = []
   
   # TODO: parameterize type=Purple+Software
+  #puts store[:id]
   cmd = sprintf(%{curl -s -A "iTunes/4.2 (Macintosh; U; PPC Mac OS X 10.2" -H "X-Apple-Store-Front: %s-1" } <<
                 %{'http://ax.phobos.apple.com.edgesuite.net/WebObjects/MZStore.woa/wa/viewContentsUserReviews?id=%s&} <<
                 %{pageNumber=0&sortOrdering=2&type=Purple+Software' | xmllint --format --recover - 2>/dev/null},
@@ -166,8 +169,19 @@ def fetch_reviews(software_id, store)
   reviews
 end
 
+version = "2.0"
+destination = "appreviews_"+ARGV[0]+".xml"
+puts destination
+content = RSS::Maker.make(version) do |m|
+m.items.do_sort = true
+
 # a simple command-line presentation
 software.keys.sort.each do |software_key|
+
+m.channel.title = "App Store Reviews for "+software_key
+m.channel.link = "http://phobos.apple.com/WebObjects/MZStore.woa/wa/viewSoftware?id="+ARGV[1]+"&mt=8" # need to put in link to itunes
+m.channel.description = "App Store Reviews for "+software_key
+
   puts "== App: #{software_key}"
 
   stores.sort_by { |a| a[:name] }.each do |store|
@@ -182,7 +196,27 @@ software.keys.sort.each do |software_key|
           review[:author], review[:version], review[:date])
         puts review[:body]
         puts "--\n" if index + 1 < reviews.size
+
+	i = m.items.new_item
+	i.title = review[:rating].to_s+" star(s) -"+review[:subject]+": ver:"+review[:version].to_s+"/ "+ review[:author]+" ("+store[:name]+")"
+        i.description = review[:body]+"/ "+ review[:author]+" ("+store[:name]+")"
+        i.link = "http://phobos.apple.com/WebObjects/MZStore.woa/wa/viewSoftware?id="+ARGV[1]+"&mt=8" # need to put in link to itunes
+        begin
+	i.date = Time.parse(review[:date]) # Time.now # review[:date]
+        rescue Exception=>e
+	i.date = Time.parse(DateTime.strptime( review[:date], "%d.%m.%Y").to_s)
+        end
       end
+#      puts "reviews done"
     end
+#      puts "stores done - #{store[:name]}"
   end
+#      puts "apps done"
 end
+
+end
+
+File.open(destination,"w") do |f|
+f.write(content)
+end
+
